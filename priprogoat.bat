@@ -1,72 +1,181 @@
 @echo off
-title Pripro Goat Rebirth Auto-Updater
-echo =================================================
-echo     Installing / Updating Pripro Goat Rebirth
-echo =================================================
-echo.
+title Pripro Goat Rebirth Installer
+setlocal enabledelayedexpansion
 
-:: Minecraft versions directory
-set "MC_DIR=%APPDATA%\.minecraft\versions\PriproGoatRebirth"
-set "TEMP_ZIP=%TEMP%\PriproGoat.zip"
-set "GDRIVE_ID=1StylMRAKwhpZtreEKpxlEI-l_eSWaYRQ"
-set "GDRIVE_URL=https://drive.google.com/uc?export=download&id=%GDRIVE_ID%"
-
-:: Check if curl exists
-where curl >nul 2>nul
+:: =====================================
+:: Admin Check
+:: =====================================
+net session >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [*] Installing curl...
-    powershell -Command "Invoke-WebRequest -Uri https://curl.se/windows/dl-8.7.1_2/curl-8.7.1_2-win64-mingw.zip -OutFile '%TEMP%\curl.zip'"
-    powershell -Command "Expand-Archive -Path '%TEMP%\curl.zip' -DestinationPath '%TEMP%\curl' -Force"
-    set "PATH=%TEMP%\curl;%PATH%"
-)
-
-:: Check if aria2c exists
-where aria2c >nul 2>nul
-if %errorlevel% neq 0 (
-    echo [*] Installing aria2c...
-    powershell -Command "Invoke-WebRequest -Uri https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip -OutFile '%TEMP%\aria2.zip'"
-    powershell -Command "Expand-Archive -Path '%TEMP%\aria2.zip' -DestinationPath '%TEMP%\aria2' -Force"
-    set "PATH=%TEMP%\aria2;%TEMP%\aria2\aria2-1.37.0-win-64bit-build1;%PATH%"
-)
-
-:: Remove old version
-if exist "%MC_DIR%" (
-    echo [*] Removing old Pripro Goat Rebirth version...
-    rmdir /s /q "%MC_DIR%"
-)
-
-:: Download modpack using aria2c (handles Google Drive large files)
-echo [*] Downloading latest Pripro Goat Rebirth modpack...
-aria2c -x 16 -s 16 -o "%TEMP_ZIP%" "%GDRIVE_URL%"
-
-if not exist "%TEMP_ZIP%" (
-    echo [!] Failed to download modpack! Check your internet connection.
-    pause
+    echo ############################################
+    echo Publisher : Pripro Studios
+    echo The Pripro Goat Installer Needs Admin Access!
+    echo ############################################
+    echo.
+    echo Press YES to continue, or NO to quit.
+    powershell -Command "Start-Process '%~f0' -Verb RunAs"
     exit /b
 )
 
-:: Extract into versions folder
-echo [*] Extracting modpack into .minecraft\versions\PriproGoatRebirth...
-powershell -Command "Expand-Archive -Path '%TEMP_ZIP%' -DestinationPath '%APPDATA%\.minecraft\versions\' -Force"
+:: =====================================
+:: Error Handler
+:: =====================================
+:ErrorHandler
+echo.
+echo [!] ERROR OCCURRED!
+echo Step: %1
+echo Error Code: %errorlevel%
+echo.
+echo Please send this error to:
+echo   Email: priprothezpro101@gmail.com
+echo   Discord: Priprothezpro101
+echo.
+pause
+exit /b %errorlevel%
 
-:: Clean up
-del "%TEMP_ZIP%"
+:: =====================================
+:: Banner
+:: =====================================
+echo ###########################################################
+echo #  PRIPRO GOAT REBIRTH INSTALLER - PRIPRO STUDIOS         #
+echo ###########################################################
+echo.
 
-:: Configure TLauncher RAM
-set "TL_CONFIG=%APPDATA%\.tlauncher\tlauncher-2.0.properties"
-
-echo [*] Setting TLauncher to use 8GB RAM...
-if exist "%TL_CONFIG%" (
-    powershell -Command "(Get-Content '%TL_CONFIG%') -replace '^memory=.*','memory=8192' | Set-Content '%TL_CONFIG%'"
+:: =====================================
+:: Ask if auto-select modpack
+:: =====================================
+choice /M "Automatically set Pripro Goat in TLauncher?"
+if errorlevel 2 (
+    set AUTOSELECT=0
+    echo [*] User will select modpack manually.
 ) else (
-    echo memory=8192 > "%TL_CONFIG%"
+    set AUTOSELECT=1
+    echo [*] Pripro Goat will be set automatically.
 )
 
+:: =====================================
+:: Step 1: Java
+:: =====================================
+:CheckJava
+echo [*] Checking Java...
+java -version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [*] Java not found. Installing JDK 21...
+    powershell -Command "Invoke-WebRequest -Uri https://download.oracle.com/java/21/latest/jdk-21_windows-x64_bin.msi -OutFile jdk21.msi" || goto :ErrorHandler JavaDownload
+    msiexec /i jdk21.msi /qn /norestart || goto :ErrorHandler JavaInstall
+    del jdk21.msi
+)
+echo [*] Java OK.
 echo.
-echo =================================================
-echo   Pripro Goat Rebirth installed/updated!
-echo   TLauncher memory set to 8GB.
-echo   Select 'PriproGoatRebirth' in TLauncher -> Play!
-echo =================================================
+
+:: =====================================
+:: Step 2: TLauncher
+:: =====================================
+:InstallTLauncher
+echo [*] Checking TLauncher...
+set "TL_DIR=%APPDATA%\.tlauncher"
+if not exist "%TL_DIR%\tlauncher.jar" (
+    echo [*] TLauncher not found. Installing...
+    powershell -Command "Invoke-WebRequest -Uri https://tlauncher.org/jar -OutFile tlauncher.jar" || goto :ErrorHandler TLDownload
+    mkdir "%TL_DIR%"
+    move tlauncher.jar "%TL_DIR%\tlauncher.jar" || goto :ErrorHandler TLMove
+)
+echo [*] TLauncher OK.
+echo.
+
+:: =====================================
+:: Step 3: Download Modpack
+:: =====================================
+:DownloadModpack
+echo [*] Downloading Pripro Goat Modpack...
+set "FILE_ID=1StylMRAKwhpZtreEKpxlEI-l_eSWaYRQ"
+set "OUT_FILE=PriproGoat.zip"
+set "PACK_DIR=%APPDATA%\.minecraft\versions\PriproGoat"
+
+if exist "%PACK_DIR%" rmdir /s /q "%PACK_DIR%"
+mkdir "%PACK_DIR%" || goto :ErrorHandler PackDir
+
+where curl >nul 2>&1
+if %errorlevel%==0 (
+    curl -c cookies.txt -s -L "https://drive.google.com/uc?export=download&id=%FILE_ID%" -o temp.html || goto :ErrorHandler Curl1
+    for /f "tokens=2 delims==&" %%G in ('findstr /i "confirm=" temp.html') do set CONFIRM=%%G
+    curl -Lb cookies.txt -L "https://drive.google.com/uc?export=download&confirm=%CONFIRM%&id=%FILE_ID%" -o "%OUT_FILE%" || goto :ErrorHandler Curl2
+    del cookies.txt temp.html
+) else (
+    aria2c -x 16 -s 16 -o "%OUT_FILE%" "https://drive.google.com/uc?export=download&id=%FILE_ID%" || goto :ErrorHandler Aria
+)
+
+powershell -Command "Expand-Archive -Force '%OUT_FILE%' '%PACK_DIR%'" || goto :ErrorHandler Unzip
+del "%OUT_FILE%"
+echo [*] Modpack installed in: %PACK_DIR%
+echo.
+
+:: =====================================
+:: Step 4: RAM + Swap
+:: =====================================
+:ConfigureRAM
+echo [*] Configuring RAM and swap...
+:: Get RAM in MB
+for /f "skip=1 tokens=2 delims==" %%a in ('wmic computersystem get TotalPhysicalMemory /value') do set mem=%%a
+set /a ramGB=!mem! / 1024 / 1024 / 1024
+echo [*] System RAM: %ramGB% GB
+
+set "TL_CFG=%APPDATA%\.tlauncher\tlauncher-2.0.properties"
+if not exist "%TL_CFG%" > "%TL_CFG%" echo memory=8192
+
+if %ramGB% GEQ 16 (
+    echo [*] >=16GB RAM → No swap required.
+) else if %ramGB% GEQ 8 (
+    echo [*] 8–15GB RAM → Force 8GB allocation, no swap.
+) else (
+    echo [!] <8GB RAM detected. Modpack needs 8GB minimum.
+    echo [*] Checking storage...
+    for /f "tokens=3" %%D in ('dir /-C %SystemDrive%^|find "bytes free"') do set freeSpace=%%D
+    set /a freeGB=%freeSpace:~0,-9%
+    echo [*] Free space: %freeGB% GB
+
+    if %freeGB% LSS 4 (
+        echo [!] Not enough storage for swap. Aborting.
+        goto :ErrorHandler SwapSpace
+    )
+
+    echo [*] Creating 4GB swap file...
+    powershell -Command "Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name PagingFiles -Value 'C:\pagefile.sys 4096 4096'"
+    echo [!] Reboot required for swap changes.
+    set needReboot=1
+)
+
+:: Always set 8GB in TLauncher
+powershell -Command "(Get-Content '%TL_CFG%') -replace '^memory=.*','memory=8192' | Set-Content '%TL_CFG%'"
+
+:: Username
+findstr /b "login=" "%TL_CFG%" >nul
+if %errorlevel%==0 (
+    for /f "tokens=2 delims==" %%U in ('findstr /b "login=" "%TL_CFG%"') do set "username=%%U"
+    echo [*] Keeping username: %username%
+) else (
+    for /f %%A in ('powershell -Command "[System.Guid]::NewGuid().ToString().Substring(0,8)"') do set "rand=%%A"
+    set "username=Goat%rand%"
+    echo [*] Setting username: %username%
+    echo login=%username%>>"%TL_CFG%"
+)
+
+if %AUTOSELECT%==1 (
+    echo [*] Auto-selecting PriproGoat in TLauncher...
+    echo selectedVersion=PriproGoat>>"%TL_CFG%"
+)
+
+echo [*] TLauncher ready with 8GB RAM and username=%username%
+echo.
+
+:: =====================================
+:: Finish
+:: =====================================
+echo ###########################################################
+echo # Pripro Goat Installer Finished!                        #
+echo ###########################################################
+if defined needReboot (
+    echo [!] System must reboot for swap settings to apply!
+)
 pause
-exit
+exit /b 0
